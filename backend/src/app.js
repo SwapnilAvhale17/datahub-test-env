@@ -29,6 +29,7 @@ const { getQBConfig, validateConfig } = require("./qbconfig");
 
 const app = express();
 
+const LOCALHOST_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 const allowedOrigins = Array.from(
   new Set(
     [
@@ -48,7 +49,7 @@ app.use(
     origin(origin, callback) {
       if (!origin) return callback(null, true);
       const normalizedOrigin = origin.replace(/\/$/, "");
-      if (allowedOrigins.includes(normalizedOrigin)) {
+      if (allowedOrigins.includes(normalizedOrigin) || LOCALHOST_ORIGIN_RE.test(normalizedOrigin)) {
         return callback(null, true);
       }
       return callback(new Error(`Origin ${origin} not allowed by CORS`));
@@ -63,9 +64,16 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.use("/auth", authRoutes);
 app.use("/users", userRoutes);
-app.use("/companies", companyRoutes);
+// Mount company-scoped subresources before the generic /companies router.
+app.use("/", groupRoutes);
 app.use("/", tokenRoutes);
 app.use("/", uploadRoutes);
+app.use("/", requestRoutes);
+app.use("/", folderRoutes);
+app.use("/", folderAccessRoutes);
+app.use("/", reminderRoutes);
+app.use("/", activityRoutes);
+app.use("/companies", companyRoutes);
 
 validateConfig();
 
@@ -92,12 +100,6 @@ app.use("/", checkQBAuth, cashflowRoutes);
 app.use("/", checkQBAuth, reconciliationRoutes);
 app.use("/", checkQBAuth, bankStatementRoutes);
 app.use("/", checkQBAuth, bankVsBooksRoutes);
-app.use("/", groupRoutes);
-app.use("/", requestRoutes);
-app.use("/", folderRoutes);
-app.use("/", folderAccessRoutes);
-app.use("/", reminderRoutes);
-app.use("/", activityRoutes);
 
 app.use(errorHandler);
 

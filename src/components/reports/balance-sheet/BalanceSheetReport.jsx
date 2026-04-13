@@ -1,25 +1,5 @@
-import BalanceSheetSummary from "./BalanceSheetSummary";
-import BalanceSheetDetail from "./BalanceSheetDetail";
-
-function deriveReportPeriodFromPayload(rawPayload) {
-  if (!rawPayload) return { start: "", end: "" };
-
-  const candidates = [
-    rawPayload?.generalLedger,
-    rawPayload?.GeneralLedger,
-    rawPayload?.balanceSheet,
-    rawPayload?.BalanceSheet,
-    rawPayload,
-  ];
-
-  for (const report of candidates) {
-    const start = report?.Header?.StartPeriod;
-    const end = report?.Header?.EndPeriod;
-    if (start || end) return { start: String(start || ""), end: String(end || "") };
-  }
-
-  return { start: "", end: "" };
-}
+import ReportDetailView from "../shared/ReportDetailView";
+import ReportSummaryView from "../shared/ReportSummaryView";
 
 export default function BalanceSheetReport({
   reportType,
@@ -29,40 +9,27 @@ export default function BalanceSheetReport({
   endDate,
   accountingMethod,
   clientName = "All Clients",
-  entityName,
-  createdOn,
-  isPreview = false,
 }) {
-  const derivedPeriod =
-    reportType === "Detail"
-      ? deriveReportPeriodFromPayload(detailedData?.rawPayload)
-      : { start: "", end: "" };
-
-  const subtitleStart = startDate || derivedPeriod.start || "N/A";
-  const subtitleEnd = endDate || derivedPeriod.end || "N/A";
-
-  const subtitle = `Report Period: ${subtitleStart} to ${subtitleEnd} | ${clientName} | ${accountingMethod} Basis`;
-  const resolvedEntityName = entityName || clientName || "Company";
+  const subtitle = `Report Period: ${startDate || "N/A"} to ${endDate || "N/A"} | ${clientName} | ${accountingMethod} Basis`;
 
   if (reportType === "Detail") {
     return (
-      <BalanceSheetDetail
+      <ReportDetailView
         data={detailedData?.groups ? detailedData : { groups: [] }}
         title="Balance Sheet"
         subtitle={subtitle}
-        entityName={resolvedEntityName}
-        isPreview={isPreview}
+        sourceLabel="QuickBooks API Pipeline"
       />
     );
   }
 
   return (
-    <BalanceSheetSummary
+    <ReportSummaryView
       data={Array.isArray(data) ? data : []}
       title="Balance Sheet"
       subtitle={subtitle}
-      entityName={resolvedEntityName}
-      createdOn={createdOn}
+      classificationLabel="Accounting Classification"
+      footerText="This report provides a granular view of the company's financial state."
     />
   );
 }

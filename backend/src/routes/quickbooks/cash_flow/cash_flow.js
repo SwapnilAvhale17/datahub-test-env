@@ -4,6 +4,15 @@ const tokenManager = require("../../../tokenManager");
 const { getQBConfig } = require("../../../qbconfig");
 const router = express.Router();
 
+function normalizeAccountingMethod(accountingMethod) {
+  const normalized = accountingMethod?.trim().toLowerCase();
+
+  if (normalized === "cash") return "Cash";
+  if (normalized === "accrual") return "Accrual";
+
+  return undefined;
+}
+
 /**
  * @swagger
  * tags:
@@ -119,6 +128,7 @@ router.get("/qb-transactions", async (req, res) => {
  */
 router.get("/qb-cashflow", async (req, res) => {
   const qb = getQBConfig();
+  const accounting_method = normalizeAccountingMethod(req.query.accounting_method);
 
   try {
     const url = `${qb.baseUrl}/v3/company/${qb.realmId}/reports/CashFlow`;
@@ -131,7 +141,7 @@ router.get("/qb-cashflow", async (req, res) => {
       params: {
         start_date: req.query.start_date,
         end_date: req.query.end_date,
-        accounting_method: req.query.accounting_method,
+        accounting_method,
       },
     });
 
@@ -236,8 +246,8 @@ router.get("/qb-cashflow-engine", async (req, res) => {
   try {
     const baseQuery = `${qb.baseUrl}/v3/company/${qb.realmId}/query`;
 
-    const { start_date, end_date, accounting_method, created_after } =
-      req.query;
+    const { start_date, end_date, created_after } = req.query;
+    const accounting_method = normalizeAccountingMethod(req.query.accounting_method);
 
     // =============================
     // Transactions queries

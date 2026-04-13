@@ -22,6 +22,11 @@ function progressPct(list) {
 export default function ClientDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const isUserPortal = user?.role === 'buyer';
+  const portalBasePath = isUserPortal ? '/user' : '/client';
+  const assignedCompanies = user?.assignedCompanies?.length
+    ? user.assignedCompanies
+    : [{ id: user?.company_id || user?.companyId, name: user?.company }].filter((company) => company.id);
 
   // Client only sees Infosys requests
   const myRequests = requests.filter(r => r.companyId === 'co1');
@@ -33,9 +38,9 @@ export default function ClientDashboard() {
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   const stats = [
-    { label: 'Pending Requests', value: pendingCount, icon: ClipboardList, color: '#b45e08', bg: '#FAC086', cta: '/client/requests' },
-    { label: 'Documents Uploaded', value: myDocs.length, icon: Upload, color: '#00648F', bg: '#A7DCF7', cta: '/client/upload' },
-    { label: 'Active Reminders', value: myReminders.length, icon: Bell, color: '#742982', bg: '#DAAAE4', cta: '/client/reminders' },
+    { label: 'Pending Requests', value: pendingCount, icon: ClipboardList, color: '#b45e08', bg: '#FAC086', cta: `${portalBasePath}/requests` },
+    { label: 'Documents Uploaded', value: myDocs.length, icon: Upload, color: '#00648F', bg: '#A7DCF7', cta: `${portalBasePath}/upload` },
+    { label: 'Active Reminders', value: myReminders.length, icon: Bell, color: '#742982', bg: '#DAAAE4', cta: `${portalBasePath}/reminders` },
   ];
 
   const categorized = {
@@ -67,8 +72,38 @@ export default function ClientDashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-[#050505]">Welcome, {user?.name?.split(' ')[0]} 👋</h1>
-        <p className="text-sm text-[#6D6E71] mt-0.5">{today} · {user?.company}</p>
+        <p className="text-sm text-[#6D6E71] mt-0.5">
+          {today} · {isUserPortal
+            ? `${assignedCompanies.length || 0} broker-assigned client${assignedCompanies.length === 1 ? '' : 's'}`
+            : assignedCompanies.length > 1
+              ? `${assignedCompanies.length} assigned companies`
+              : user?.company}
+        </p>
       </div>
+
+      {assignedCompanies.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-card p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-[#050505]">{isUserPortal ? 'Assigned Clients' : 'Assigned Companies'}</h2>
+              <p className="text-xs text-[#6D6E71] mt-0.5">
+                {isUserPortal
+                  ? 'These are the clients your broker has assigned to your login.'
+                  : 'Switch between these companies from Requests and Documents.'}
+              </p>
+            </div>
+            <Building2 size={18} className="text-[#8BC53D]" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {assignedCompanies.map((company) => (
+              <div key={company.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <p className="text-sm font-bold text-[#05164D]">{company.name}</p>
+                <p className="mt-1 text-xs text-[#6D6E71]">{company.industry || 'Client company'}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Alert: next due */}
       {nextDue && (
@@ -77,7 +112,7 @@ export default function ClientDashboard() {
           <p className="text-sm text-[#b45e08] font-medium flex-1">
             You have a pending request: <strong>"{nextDue.name}"</strong> — due <strong>{nextDue.dueDate}</strong>
           </p>
-          <button onClick={() => navigate('/client/requests')} className="text-xs font-semibold text-[#b45e08] hover:underline whitespace-nowrap">
+          <button onClick={() => navigate(`${portalBasePath}/requests`)} className="text-xs font-semibold text-[#b45e08] hover:underline whitespace-nowrap">
             Upload Now
           </button>
         </div>
@@ -106,7 +141,7 @@ export default function ClientDashboard() {
         <div className="bg-white rounded-2xl shadow-card overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <h2 className="font-semibold text-[#050505]">Quick Info</h2>
-            <button onClick={() => navigate('/client/requests')} className="flex items-center gap-1 text-xs text-[#8BC53D] font-semibold hover:underline">
+            <button onClick={() => navigate(`${portalBasePath}/requests`)} className="flex items-center gap-1 text-xs text-[#8BC53D] font-semibold hover:underline">
               My requests <ArrowRight size={12} />
             </button>
           </div>
@@ -157,7 +192,7 @@ export default function ClientDashboard() {
       <div className="bg-white rounded-2xl shadow-card overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="font-semibold text-[#050505]">Recent Requests</h2>
-          <button onClick={() => navigate('/client/requests')} className="flex items-center gap-1 text-xs text-[#8BC53D] font-semibold hover:underline">
+          <button onClick={() => navigate(`${portalBasePath}/requests`)} className="flex items-center gap-1 text-xs text-[#8BC53D] font-semibold hover:underline">
             View all <ArrowRight size={12} />
           </button>
         </div>

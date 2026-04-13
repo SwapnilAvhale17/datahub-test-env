@@ -578,7 +578,13 @@ function RequestDetailPage({ onBack, request, allRequests, onUpdateRequest, onUp
 
 export default function ClientRequests() {
   const { user } = useAuth();
-  const companyId = user?.company_id || user?.companyId || null;
+  const assignedCompanies = useMemo(() => (
+    user?.assignedCompanies?.length
+      ? user.assignedCompanies
+      : [{ id: user?.company_id || user?.companyId, name: user?.company }].filter((company) => company.id)
+  ), [user?.assignedCompanies, user?.company_id, user?.companyId, user?.company]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState(assignedCompanies[0]?.id || null);
+  const companyId = selectedCompanyId || user?.company_id || user?.companyId || null;
   const [requestState, setRequestState] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -593,6 +599,13 @@ export default function ClientRequests() {
   const [search, setSearch] = useState('');
   const [activeRequestId, setActiveRequestId] = useState(null);
   const [isNewRequestOpen, setIsNewRequestOpen] = useState(false);
+
+  useEffect(() => {
+    if (!assignedCompanies.length) return;
+    if (!selectedCompanyId || !assignedCompanies.some((company) => String(company.id) === String(selectedCompanyId))) {
+      setSelectedCompanyId(assignedCompanies[0].id);
+    }
+  }, [assignedCompanies, selectedCompanyId]);
 
   const loadRequests = async () => {
     if (!companyId) return;
@@ -610,6 +623,8 @@ export default function ClientRequests() {
 
   useEffect(() => {
     if (!companyId) return;
+    setSelectedCategory(null);
+    setActiveRequestId(null);
     loadRequests();
     setFoldersLoading(true);
     listCompanyFolders(companyId)
@@ -823,6 +838,17 @@ export default function ClientRequests() {
         </div>
         {!selectedCategory && (
           <div className="flex items-center gap-3">
+            {assignedCompanies.length > 1 && (
+              <select
+                value={companyId || ''}
+                onChange={(event) => setSelectedCompanyId(event.target.value)}
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-semibold text-[#05164D]"
+              >
+                {assignedCompanies.map((company) => (
+                  <option key={company.id} value={company.id}>{company.name}</option>
+                ))}
+              </select>
+            )}
             <div className="flex items-center bg-gray-100 rounded-xl p-0.5">
               <button
                 onClick={() => setCategoryView('cards')}

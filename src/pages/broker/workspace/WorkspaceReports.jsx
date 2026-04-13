@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useState } from "react";
 import Header from "../../../components/Header";
 import {
   ChevronDown,
@@ -9,7 +8,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
-import { getCompanyRequest } from "../../../lib/api";
 import {
   getBalanceSheet,
   getBalanceSheetDetail,
@@ -43,18 +41,8 @@ function formatDateForInput(date) {
 }
 
 export default function WorkspaceReports() {
-  const { clientId } = useParams();
   const today = new Date();
   const todayString = formatDateForInput(today);
-  const REPORT_TABS = useMemo(
-    () => [
-      { key: "Balance Sheet", label: "Balance Sheet" },
-      { key: "Profit & Loss", label: "Profit & Loss" },
-      { key: "Cashflow", label: "Cash Flow" },
-    ],
-    [],
-  );
-
   const [selectedTab, setSelectedTab] = useState("Balance Sheet");
   const [viewMode, setViewMode] = useState("generator");
   const [reportType, setReportType] = useState("Summary");
@@ -71,47 +59,12 @@ export default function WorkspaceReports() {
   });
   const [appliedStartDate, setAppliedStartDate] = useState("");
   const [appliedEndDate, setAppliedEndDate] = useState("");
-  const [appliedReportType, setAppliedReportType] = useState("Summary");
-  const [appliedAccountingMethod, setAppliedAccountingMethod] = useState("Accrual");
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
   const [reportFormat, setReportFormat] = useState("PDF");
   const [isSyncing, setIsSyncing] = useState(false);
-  const [company, setCompany] = useState(null);
-
-  useEffect(() => {
-    let active = true;
-    if (!clientId) {
-      setCompany(null);
-      return () => {
-        active = false;
-      };
-    }
-
-    getCompanyRequest(clientId)
-      .then((payload) => {
-        if (active) setCompany(payload);
-      })
-      .catch(() => {
-        if (active) setCompany(null);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [clientId]);
-
-  const clientName = useMemo(() => company?.name || "All Clients", [company?.name]);
-  const createdOn = useMemo(
-    () =>
-      new Date().toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      }),
-    [],
-  );
+  const clientName = "All Clients";
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -183,8 +136,6 @@ export default function WorkspaceReports() {
 
       setAppliedStartDate(startDate || "");
       setAppliedEndDate(endDate || "");
-      setAppliedReportType(reportType);
-      setAppliedAccountingMethod(accountingMethod);
 
       let summary = [];
       let detail = { groups: [] };
@@ -238,8 +189,69 @@ export default function WorkspaceReports() {
   const handleDownloadPDF = async () => {
     setIsDownloadingPDF(true);
     try {
-      const fileName = `${selectedTab.toLowerCase()}-${appliedReportType.toLowerCase()}-report`;
-      exportToPDF("report-export", fileName);
+      const currentReport = reportsData[selectedTab];
+      const dataToExport =
+        reportType === "Summary" ? currentReport.summary : currentReport.detail;
+
+      const isEmpty =
+        reportType === "Summary"
+          ? dataToExport.length === 0
+          : !(dataToExport?.groups?.length > 0);
+
+      if (isEmpty) {
+        alert("No active report data found. Please generate the report first.");
+        return;
+      }
+
+      const subtitle = `Report Period: ${appliedStartDate || "N/A"} to ${appliedEndDate || "N/A"} | ${accountingMethod} Basis`;
+      const fileName = `${selectedTab.toLowerCase()}-${reportType.toLowerCase()}`;
+
+      if (reportType === "Summary") {
+        const headers = ["Accounting Classification", "Amount (USD)"];
+        const flatData = flattenSummaryData(dataToExport);
+        exportToPDF(
+          selectedTab,
+          subtitle,
+          headers,
+          flatData.map((row) => [row["Accounting Classification"], row["Amount (USD)"]]),
+          fileName,
+        );
+      } else {
+        const rawExport = dataToExport?.rawPayload
+          ? flattenRawReportData(dataToExport.rawPayload)
+          : null;
+        const headers = rawExport?.headers?.length
+          ? rawExport.headers
+          : [
+              "Date",
+              "Type",
+              "Num",
+              "Name",
+              "Memo",
+              "Split",
+              "Amount",
+              "Balance",
+            ];
+        const flatData = rawExport?.rows?.length
+          ? rawExport.rows
+          : flattenDetailData(dataToExport).map((row) => [
+              row.Date,
+              row.Type,
+              row.Num,
+              row.Name,
+              row.Memo,
+              row.Split,
+              row.Amount,
+              row.Balance,
+            ]);
+        exportToPDF(
+          `${selectedTab} Detail`,
+          subtitle,
+          headers,
+          flatData,
+          fileName,
+        );
+      }
     } catch (error) {
       console.error("PDF generation failed:", error);
       alert("Error: Could not generate dynamic PDF report.");
@@ -253,10 +265,10 @@ export default function WorkspaceReports() {
     try {
       const currentReport = reportsData[selectedTab];
       const dataToExport =
-        appliedReportType === "Summary" ? currentReport.summary : currentReport.detail;
+        reportType === "Summary" ? currentReport.summary : currentReport.detail;
 
       const isEmpty =
-        appliedReportType === "Summary"
+        reportType === "Summary"
           ? dataToExport.length === 0
           : !(dataToExport?.groups?.length > 0);
 
@@ -265,10 +277,10 @@ export default function WorkspaceReports() {
         return;
       }
 
-      const subtitle = `Report Period: ${appliedStartDate || "N/A"} to ${appliedEndDate || "N/A"} | ${appliedAccountingMethod} Basis`;
-      const fileName = `${selectedTab.toLowerCase()}-${appliedReportType.toLowerCase()}`;
+      const subtitle = `Report Period: ${appliedStartDate || "N/A"} to ${appliedEndDate || "N/A"} | ${accountingMethod} Basis`;
+      const fileName = `${selectedTab.toLowerCase()}-${reportType.toLowerCase()}`;
 
-      if (appliedReportType === "Summary") {
+      if (reportType === "Summary") {
         exportToExcel(
           selectedTab,
           subtitle,
@@ -292,8 +304,6 @@ export default function WorkspaceReports() {
   };
 
   const currentReport = reportsData[selectedTab];
-  const selectedTabLabel =
-    REPORT_TABS.find((tab) => tab.key === selectedTab)?.label || selectedTab;
 
   return (
     <div className="page-container">
@@ -301,7 +311,7 @@ export default function WorkspaceReports() {
 
       <div className="page-content">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-[#050505] mb-4">Financial Reports</h1>
+          <h1 className="page-title">Financial Reports</h1>
           <button
             onClick={handleSync}
             disabled={isSyncing}
@@ -313,12 +323,12 @@ export default function WorkspaceReports() {
         </div>
 
         <div className="mb-6 flex gap-6 border-b border-border pb-px">
-          {REPORT_TABS.map((tab) => (
+          {["Balance Sheet", "Profit & Loss", "Cashflow"].map((tab) => (
             <button
-              key={tab.key}
+              key={tab}
               onClick={() => {
-                setSelectedTab(tab.key);
-                const existingReport = reportsData[tab.key];
+                setSelectedTab(tab);
+                const existingReport = reportsData[tab];
                 if (
                   (existingReport?.summary?.length ?? 0) > 0 ||
                   (existingReport?.detail?.groups?.length ?? 0) > 0
@@ -330,19 +340,19 @@ export default function WorkspaceReports() {
               }}
               className={cn(
                 "relative pb-3 text-[14px] font-medium transition-all",
-                selectedTab === tab.key
+                selectedTab === tab
                   ? "font-semibold text-text-primary after:absolute after:bottom-[-1px] after:left-0 after:h-[2px] after:w-full after:rounded-full after:bg-primary after:content-['']"
                   : "text-text-muted hover:text-text-secondary",
               )}
             >
-              {tab.label}
+              {tab}
             </button>
           ))}
         </div>
 
         <div className="card-base card-p">
           <div className="mb-5 flex flex-col gap-1">
-            <h2 className="text-[18px] font-semibold text-text-primary">{selectedTabLabel}</h2>
+            <h2 className="text-[18px] font-semibold text-text-primary">{selectedTab}</h2>
             <p className="text-[14px] text-text-muted">
               Generate reports about your company financial position, performance, and trends.
             </p>
@@ -517,94 +527,36 @@ export default function WorkspaceReports() {
                     Analyzing real-time financial data...
                   </p>
                 </div>
+              ) : selectedTab === "Balance Sheet" ? (
+                <BalanceSheetReport
+                  reportType={reportType}
+                  data={currentReport.summary}
+                  detailedData={currentReport.detail}
+                  startDate={appliedStartDate}
+                  endDate={appliedEndDate}
+                  accountingMethod={accountingMethod}
+                  clientName={clientName}
+                />
+              ) : selectedTab === "Profit & Loss" ? (
+                <ProfitAndLossReport
+                  reportType={reportType}
+                  data={currentReport.summary}
+                  detailedData={currentReport.detail}
+                  startDate={appliedStartDate}
+                  endDate={appliedEndDate}
+                  accountingMethod={accountingMethod}
+                  clientName={clientName}
+                />
               ) : (
-                <>
-                  <div id="report-content" className="bg-white">
-                    {selectedTab === "Balance Sheet" ? (
-                      <BalanceSheetReport
-                        reportType={appliedReportType}
-                        data={currentReport.summary}
-                        detailedData={currentReport.detail}
-                        startDate={appliedStartDate}
-                        endDate={appliedEndDate}
-                        accountingMethod={appliedAccountingMethod}
-                        clientName={clientName}
-                        entityName={company?.name || clientName}
-                        createdOn={createdOn}
-                        isPreview={true}
-                      />
-                    ) : selectedTab === "Profit & Loss" ? (
-                      <ProfitAndLossReport
-                        reportType={appliedReportType}
-                        data={currentReport.summary}
-                        detailedData={currentReport.detail}
-                        startDate={appliedStartDate}
-                        endDate={appliedEndDate}
-                        accountingMethod={appliedAccountingMethod}
-                        clientName={clientName}
-                        entityName={company?.name || clientName}
-                        createdOn={createdOn}
-                        isPreview={true}
-                      />
-                    ) : (
-                      <CashflowReport
-                        reportType={appliedReportType}
-                        data={currentReport.summary}
-                        detailedData={currentReport.detail}
-                        startDate={appliedStartDate}
-                        endDate={appliedEndDate}
-                        accountingMethod={appliedAccountingMethod}
-                        clientName={clientName}
-                        entityName={company?.name || clientName}
-                        createdOn={createdOn}
-                        isPreview={true}
-                      />
-                    )}
-                  </div>
-
-                  <div id="report-export" className="hidden" aria-hidden="true" style={{ display: 'none' }}>
-                    {selectedTab === "Balance Sheet" ? (
-                      <BalanceSheetReport
-                        reportType={appliedReportType}
-                        data={currentReport.summary}
-                        detailedData={currentReport.detail}
-                        startDate={appliedStartDate}
-                        endDate={appliedEndDate}
-                        accountingMethod={appliedAccountingMethod}
-                        clientName={clientName}
-                        entityName={company?.name || clientName}
-                        createdOn={createdOn}
-                        isPreview={false}
-                      />
-                    ) : selectedTab === "Profit & Loss" ? (
-                      <ProfitAndLossReport
-                        reportType={appliedReportType}
-                        data={currentReport.summary}
-                        detailedData={currentReport.detail}
-                        startDate={appliedStartDate}
-                        endDate={appliedEndDate}
-                        accountingMethod={appliedAccountingMethod}
-                        clientName={clientName}
-                        entityName={company?.name || clientName}
-                        createdOn={createdOn}
-                        isPreview={false}
-                      />
-                    ) : (
-                      <CashflowReport
-                        reportType={appliedReportType}
-                        data={currentReport.summary}
-                        detailedData={currentReport.detail}
-                        startDate={appliedStartDate}
-                        endDate={appliedEndDate}
-                        accountingMethod={appliedAccountingMethod}
-                        clientName={clientName}
-                        entityName={company?.name || clientName}
-                        createdOn={createdOn}
-                        isPreview={false}
-                      />
-                    )}
-                  </div>
-                </>
+                <CashflowReport
+                  reportType={reportType}
+                  data={currentReport.summary}
+                  detailedData={currentReport.detail}
+                  startDate={appliedStartDate}
+                  endDate={appliedEndDate}
+                  accountingMethod={accountingMethod}
+                  clientName={clientName}
+                />
               )}
 
               <div className="mt-6 flex items-center justify-end gap-3">

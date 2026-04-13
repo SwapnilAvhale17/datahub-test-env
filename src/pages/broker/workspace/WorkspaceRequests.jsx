@@ -67,6 +67,18 @@ const RESPONSE_TYPE_OPTIONS = ['Upload', 'Narrative', 'Both'];
 const PRIORITY_OPTIONS = ['critical', 'high', 'medium', 'low'];
 const STATUS_OPTIONS = ['pending', 'in-review', 'completed', 'blocked'];
 const BULK_TEMPLATE_HEADERS = ['title', 'sub_label', 'description', 'category', 'response_type', 'priority', 'status', 'due_date', 'assigned_to', 'visible'];
+const BULK_TEMPLATE_FIELD_INFO = [
+  ['title', 'Yes', 'Request title shown to the client.', 'GST Certificate'],
+  ['sub_label', 'No', 'Optional short label or folder name. Leave blank if not needed.', 'Compliance'],
+  ['description', 'Yes', 'Short and clear request instructions for the client.', 'Upload the latest signed GST certificate for review.'],
+  ['category', 'Yes', `Use one of: ${CATEGORY_ORDER.join(', ')}`, 'Compliance'],
+  ['response_type', 'Yes', `Use one of: ${RESPONSE_TYPE_OPTIONS.join(', ')}`, 'Upload'],
+  ['priority', 'Yes', `Use one of: ${PRIORITY_OPTIONS.join(', ')}`, 'high'],
+  ['status', 'Yes', `Use one of: ${STATUS_OPTIONS.join(', ')}`, 'pending'],
+  ['due_date', 'Yes', 'Preferred format: YYYY-MM-DD. Excel date cells are also accepted.', formatToday()],
+  ['assigned_to', 'No', 'Optional assignee user ID only. Leave blank if unassigned.', ''],
+  ['visible', 'No', 'Optional. Use true or false. Blank defaults to true.', 'true'],
+];
 
 function normalizeVisibleFlag(value) {
   if (typeof value === 'boolean') return value;
@@ -89,54 +101,33 @@ function downloadFile(blob, filename) {
 }
 
 function buildBulkTemplateWorkbook(folderOptions) {
-  const folderNames = folderOptions.length
-    ? folderOptions.map((folder) => (typeof folder === 'string' ? folder : folder.name)).filter(Boolean)
-    : CATEGORY_ORDER;
-  const sampleFolder = folderNames[0] || 'Compliance';
-  const sampleCategory = mapToCategory({
-    name: 'GST Certificate',
-    subLabel: sampleFolder,
-    description: 'Upload the latest signed GST certificate for review.',
-    category: sampleFolder,
-  });
-
-  const templateSheet = XLSX.utils.json_to_sheet([
-    {
-      title: 'GST Certificate',
-      sub_label: sampleFolder,
-      description: 'Upload the latest signed GST certificate for review.',
-      category: sampleCategory,
-      response_type: 'Upload',
-      priority: 'high',
-      status: 'pending',
-      due_date: formatToday(),
-      assigned_to: '',
-      visible: 'true',
-    },
-  ], { header: BULK_TEMPLATE_HEADERS });
+  const templateSheet = XLSX.utils.aoa_to_sheet([BULK_TEMPLATE_HEADERS]);
 
   templateSheet['!cols'] = BULK_TEMPLATE_HEADERS.map((header) => ({
     wch: header === 'description' ? 42 : 18,
   }));
+  templateSheet['!autofilter'] = { ref: `A1:${String.fromCharCode(64 + BULK_TEMPLATE_HEADERS.length)}1` };
 
   const instructionsSheet = XLSX.utils.aoa_to_sheet([
-    ['Field', 'Required', 'Guidance'],
-    ['title', 'Yes', 'Request title shown to the client.'],
-    ['sub_label', 'No', 'Optional short label; use the folder name here if the request maps to a specific folder.'],
-    ['description', 'Yes', 'Short request description or instructions.'],
-    ['category', 'Yes', `Use one of: ${CATEGORY_ORDER.join(', ')}`],
-    ['response_type', 'Yes', `Use one of: ${RESPONSE_TYPE_OPTIONS.join(', ')}`],
-    ['priority', 'Yes', `Use one of: ${PRIORITY_OPTIONS.join(', ')}`],
-    ['status', 'Yes', `Use one of: ${STATUS_OPTIONS.join(', ')}`],
-    ['due_date', 'Yes', 'Format must be YYYY-MM-DD.'],
-    ['assigned_to', 'No', 'Optional user id for assignment. Leave blank if unassigned.'],
-    ['visible', 'No', 'Use true or false. Blank defaults to true.'],
+    ['Bulk Upload Instructions'],
+    ['Fill only the Requests sheet. Keep the header row exactly as downloaded. One row = one request.'],
+    ['Do not add example/sample records unless you want them created. Blank rows are ignored during upload.'],
+    [''],
+    ['Field', 'Required', 'Guidance', 'Example'],
+    ...BULK_TEMPLATE_FIELD_INFO,
+    [''],
+    ['Notes'],
+    [`Available categories: ${CATEGORY_ORDER.join(', ')}`],
+    [`Available response types: ${RESPONSE_TYPE_OPTIONS.join(', ')}`],
+    [`Available priorities: ${PRIORITY_OPTIONS.join(', ')}`],
+    [`Available statuses: ${STATUS_OPTIONS.join(', ')}`],
   ]);
 
   instructionsSheet['!cols'] = [
+    { wch: 24 },
+    { wch: 12 },
+    { wch: 78 },
     { wch: 18 },
-    { wch: 10 },
-    { wch: 70 },
   ];
 
   const workbook = XLSX.utils.book_new();
@@ -145,14 +136,45 @@ function buildBulkTemplateWorkbook(folderOptions) {
   return workbook;
 }
 
+function normalizeBulkHeader(header) {
+  return `${header ?? ''}`
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function normalizeBulkDate(value) {
+  if (value == null || value === '') return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === 'number') {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed?.y && parsed?.m && parsed?.d) {
+      return `${parsed.y}`.padStart(4, '0') + `-${`${parsed.m}`.padStart(2, '0')}` + `-${`${parsed.d}`.padStart(2, '0')}`;
+    }
+  }
+
+  const normalized = `${value}`.trim();
+  if (!normalized) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
+
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return normalized;
+}
+
 function readBulkWorkbook(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
     reader.onload = (event) => {
       try {
-        const workbook = XLSX.read(event.target?.result, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
+        const workbook = XLSX.read(event.target?.result, { type: 'array', cellDates: true });
+        const sheetName = workbook.SheetNames.find((name) => name.toLowerCase() === 'requests') || workbook.SheetNames[0];
         if (!sheetName) {
           reject(new Error('The uploaded workbook does not contain any sheets.'));
           return;
@@ -160,9 +182,12 @@ function readBulkWorkbook(file) {
 
         const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
           defval: '',
-          raw: false,
+          raw: true,
         });
-        resolve(rows);
+        const normalizedRows = rows.map((row) => Object.fromEntries(
+          Object.entries(row || {}).map(([key, value]) => [normalizeBulkHeader(key), value])
+        ));
+        resolve(normalizedRows);
       } catch (error) {
         reject(new Error('Unable to read the uploaded Excel file.'));
       }
@@ -900,6 +925,13 @@ export default function WorkspaceRequests() {
 
     try {
       const rows = await readBulkWorkbook(bulkFile);
+      const populatedRows = rows.filter((row) => !isEmptyBulkRow(row));
+      const missingHeaders = BULK_TEMPLATE_HEADERS.filter((header) => !rows.some((row) => Object.prototype.hasOwnProperty.call(row, header)));
+
+      if (populatedRows.length > 0 && missingHeaders.length > 0) {
+        throw new Error(`The uploaded sheet is missing required template columns: ${missingHeaders.join(', ')}.`);
+      }
+
       const requests = rows
         .filter((row) => !isEmptyBulkRow(row))
         .map((row) => ({
@@ -910,7 +942,7 @@ export default function WorkspaceRequests() {
           response_type: `${row.response_type ?? ''}`.trim(),
           priority: `${row.priority ?? ''}`.trim().toLowerCase(),
           status: `${row.status ?? ''}`.trim().toLowerCase(),
-          due_date: `${row.due_date ?? ''}`.trim(),
+          due_date: normalizeBulkDate(row.due_date),
           assigned_to: `${row.assigned_to ?? ''}`.trim(),
           visible: normalizeVisibleFlag(row.visible),
         }));
@@ -1110,7 +1142,7 @@ export default function WorkspaceRequests() {
                 <button
                   type="button"
                   onClick={uploadBulkRequests}
-                  disabled={bulkUploading}
+                  disabled={bulkUploading || !bulkFile}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#05164D] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#0b2a79] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {bulkUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}

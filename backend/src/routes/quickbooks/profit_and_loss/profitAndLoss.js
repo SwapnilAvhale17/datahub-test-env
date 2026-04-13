@@ -5,6 +5,15 @@ const { getQBConfig } = require("../../../qbconfig");
 
 const router = express.Router();
 
+function normalizeAccountingMethod(accountingMethod) {
+  const normalized = accountingMethod?.trim().toLowerCase();
+
+  if (normalized === "cash") return "Cash";
+  if (normalized === "accrual") return "Accrual";
+
+  return undefined;
+}
+
 /**
  * @swagger
  * /profit-and-loss:
@@ -138,7 +147,7 @@ router.get("/profit-and-loss-detail", async (req, res) => {
   // Clean inputs
   start_date = start_date?.trim();
   end_date = end_date?.trim();
-  accounting_method = accounting_method?.trim();
+  accounting_method = normalizeAccountingMethod(accounting_method);
 
   // Validate accounting method
   const validAccountingMethods = ["Accrual", "Cash"];

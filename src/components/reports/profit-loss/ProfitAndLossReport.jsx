@@ -1,7 +1,5 @@
-import ProfitAndLossSummary from "./ProfitAndLossSummary";
-import ProfitAndLossDetail from "./ProfitAndLossDetail";
-
-
+import ReportDetailView from "../shared/ReportDetailView";
+import ReportSummaryView from "../shared/ReportSummaryView";
 
 export default function ProfitAndLossReport({
   reportType,
@@ -11,32 +9,27 @@ export default function ProfitAndLossReport({
   endDate,
   accountingMethod,
   clientName = "All Clients",
-  entityName,
-  createdOn,
-  isPreview = false,
 }) {
   const subtitle = `Report Period: ${startDate || "N/A"} to ${endDate || "N/A"} | ${clientName} | ${accountingMethod} Basis`;
-  const resolvedEntityName = entityName || clientName || "Company";
 
   if (reportType === "Detail") {
     return (
-      <ProfitAndLossDetail
+      <ReportDetailView
         data={detailedData?.groups ? detailedData : { groups: [] }}
         title="Profit & Loss"
         subtitle={subtitle}
-        entityName={resolvedEntityName}
-        isPreview={isPreview}
+        sourceLabel="QuickBooks API Pipeline"
       />
     );
   }
 
   return (
-    <ProfitAndLossSummary
+    <ReportSummaryView
       data={Array.isArray(data) ? data : []}
       title="Profit & Loss"
       subtitle={subtitle}
-      entityName={resolvedEntityName}
-      createdOn={createdOn}
+      classificationLabel="Accounting Classification"
+      footerText="This report provides a granular view of the company's financial performance."
     />
   );
 }

@@ -1,7 +1,7 @@
 import { fetchCashflow } from "../lib/quickbooks";
 import { normalizeAccountingMethod } from "../lib/report-filters";
 import {
-  parseCashflowEngineDetailReport,
+  parseCashflowDetailReport,
   parseSummaryReport,
 } from "../lib/report-parsers";
 
@@ -53,10 +53,10 @@ export async function getCashflowDetail(startDate, endDate, accountingMethod) {
     })}`,
   );
 
-  const rawPayload = payload?.cashflow || payload;
+  const detailSource = payload?.cashflow || payload;
 
   return {
-    ...parseCashflowEngineDetailReport(payload, endDate),
-    rawPayload,
+    ...parseCashflowDetailReport(detailSource),
+    rawPayload: detailSource,
   };
 }

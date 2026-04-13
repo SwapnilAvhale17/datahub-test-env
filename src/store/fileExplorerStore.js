@@ -244,7 +244,20 @@ export const useFileExplorerStore = create(
       draggingItems: [],
       uploadProgress: null,
       folderAccess: INITIAL_FOLDER_ACCESS,
-      setCompanyId: (companyId) => set({ companyId }),
+      setCompanyId: (companyId) => set((state) => {
+        // Reset state when company changes
+        if (state.companyId && state.companyId !== companyId) {
+          return {
+            companyId,
+            tree: INITIAL_TREE,
+            currentPath: ['root'],
+            expandedFolders: [],
+            selectedItems: [],
+            folderAccess: INITIAL_FOLDER_ACCESS,
+          };
+        }
+        return { companyId };
+      }),
       setCreatedBy: (createdBy) => set({ createdBy }),
       setTree: (tree) => set({ tree }),
       setCurrentPath: (currentPath) => set({ currentPath }),
@@ -264,7 +277,7 @@ export const useFileExplorerStore = create(
           root = insertDocs(root, folderId, docsByFolder[folderId] || []);
         });
         const expanded = ['root', ...children.map((c) => c.id)];
-        set({ tree: root, companyId, currentPath: ['root'], expandedFolders: expanded });
+        set({ tree: root, companyId, currentPath: ['root'], expandedFolders: expanded, selectedItems: [], folderAccess: INITIAL_FOLDER_ACCESS });
       },
       loadFolderAccessFromApi: async (folderId) => {
         const entries = await listFolderAccess(folderId);

@@ -4,7 +4,8 @@ import { loginRequest, logoutRequest, meRequest, setStoredToken, getStoredToken 
 const AuthContext = createContext(null);
 
 const ROLE_MAP = {
-  buyer: 'client',
+  user: 'buyer',
+  buyer: 'buyer',
   broker: 'broker',
   admin: 'broker',
   client: 'client',
@@ -55,12 +56,15 @@ function normalizeUser(userData) {
   if (!userData) return userData;
   const normalizedRole = ROLE_MAP[userData.role] || userData.role;
   const normalizedCompany = userData.company ?? userData.company_name ?? userData.companyName ?? '';
+  const assignedCompanies = userData.assigned_companies ?? userData.assignedCompanies ?? [];
   const normalizedName = userData.name ?? userData.full_name ?? userData.fullName ?? '';
   const normalizedAvatar = userData.avatar ?? initials(normalizedName);
   return {
     ...userData,
     role: normalizedRole,
     company: normalizedCompany,
+    assignedCompanies,
+    companyIds: userData.company_ids ?? userData.companyIds ?? assignedCompanies.map((company) => company.id).filter(Boolean),
     name: normalizedName,
     avatar: normalizedAvatar,
   };

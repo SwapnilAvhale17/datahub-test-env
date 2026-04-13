@@ -1,26 +1,34 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import datahubLogo from '../../assets/datahub-logo.png';
 import {
   LayoutDashboard,
   Building2,
   Bell,
   LogOut,
   Upload,
-
   ClipboardList,
+  TrendingUp,
   X,
   MoreHorizontal,
 } from 'lucide-react';
-import datahublogo from '../../assets/datahublogo.png';
-
 
 const brokerNav = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/broker/dashboard' },
   { label: 'Companies', icon: Building2, to: '/broker/companies' },
 ];
 
+const userNav = [
+  { label: 'Dashboard', icon: LayoutDashboard, to: '/user/dashboard' },
+  { label: 'Documents', icon: Building2, to: '/user/documents' },
+  { label: 'DataHub Dashboard', icon: TrendingUp, to: '/user/datahub-dashboard' },
+  { label: 'My Requests', icon: ClipboardList, to: '/user/requests' },
+  { label: 'Reminders', icon: Bell, to: '/user/reminders' },
+];
+
 const clientNav = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/client/dashboard' },
+  { label: 'DataHub Dashboard', icon: TrendingUp, to: '/client/datahub-dashboard' },
   { label: 'My Requests', icon: ClipboardList, to: '/client/requests' },
   { label: 'Upload Documents', icon: Upload, to: '/client/upload' },
   { label: 'Reminders', icon: Bell, to: '/client/reminders' },
@@ -29,7 +37,9 @@ const clientNav = [
 export default function Sidebar({ onClose }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const nav = user?.role === 'broker' ? brokerNav : clientNav;
+  const nav = user?.role === 'broker' ? brokerNav : user?.role === 'buyer' ? userNav : clientNav;
+  const portalLabel = user?.role === 'broker' ? 'Broker Workspace' : user?.role === 'buyer' ? 'User Portal' : 'Client Portal';
+  const accountLabel = user?.role === 'broker' ? 'Administrator' : user?.role === 'buyer' ? 'User' : 'Client';
 
   const handleLogout = () => {
     logout();
@@ -42,20 +52,25 @@ export default function Sidebar({ onClose }) {
       style={{ boxShadow: 'var(--shadow-sidebar)' }}
     >
       <div className="border-b border-border px-3 pb-5 pt-3">
-        <div className="relative flex items-center justify-center">
-          <button onClick={() => navigate('/')} className="flex items-center justify-center">
-            <img src={datahublogo} alt="DataHub" className="h-10 w-auto object-contain" />
+        <div className="flex items-center justify-between">
+          <button onClick={() => navigate('/')} className="flex items-center gap-3 text-left">
+            <div>
+              <img
+                src={datahubLogo}
+                alt="DataHub"
+                className="h-auto w-[132px]"
+              />
+              <p className="mt-1 text-[11px] leading-none text-text-muted">
+                {portalLabel}
+              </p>
+            </div>
           </button>
           {onClose && (
-            <button 
-              onClick={onClose} 
-              className="absolute -right-1 top-1/2 -translate-y-1/2 rounded-md p-1 text-text-muted transition-colors hover:bg-bg-page hover:text-text-primary"
-            >
+            <button onClick={onClose} className="rounded-md p-1 text-text-muted transition-colors hover:bg-bg-page hover:text-text-primary">
               <X size={18} />
             </button>
           )}
         </div>
-
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
@@ -95,7 +110,7 @@ export default function Sidebar({ onClose }) {
           <div className="min-w-0 flex-1 text-left">
             <p className="truncate text-[14px] font-medium leading-none text-text-primary">{user?.name}</p>
             <p className="mt-1 truncate text-[12px] leading-none text-text-muted">
-              {user?.role === 'broker' ? 'Administrator' : user?.company}
+              {accountLabel}
             </p>
           </div>
           <button className="text-text-muted transition-colors hover:text-text-primary">

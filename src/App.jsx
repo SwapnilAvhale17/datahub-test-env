@@ -21,9 +21,12 @@ import BrokerRequests from "./pages/broker/Requests";
 import BrokerDocuments from "./pages/broker/Documents";
 import BrokerReminders from "./pages/broker/Reminders";
 import ClientDashboard from "./pages/client/Dashboard";
+import ClientDatahubDashboard from "./pages/client/DatahubDashboard";
 import ClientRequests from "./pages/client/Requests";
 import ClientUpload from "./pages/client/Upload";
 import ClientReminders from "./pages/client/Reminders";
+import UserDashboard from "./pages/user/Dashboard";
+import UserDocuments from "./pages/user/Documents";
 import WorkspaceDashboard from "./pages/broker/workspace/WorkspaceDashboard";
 import WorkspaceDashboardDatahub from "./pages/broker/workspace/WorkspaceDashboardDatahub";
 import WorkspaceRequests from "./pages/broker/workspace/WorkspaceRequests";
@@ -36,6 +39,13 @@ import WorkspaceReports from "./pages/broker/workspace/WorkspaceReports";
 import WorkspaceReconciliation from "./pages/broker/workspace/WorkspaceReconciliation";
 import WorkspaceConnections from "./pages/broker/workspace/WorkspaceConnections";
 import { getCompanyRequest, listCompaniesRequest } from "./lib/api";
+
+function getHomeRoute(role) {
+  if (role === "broker") return "/broker/dashboard";
+  if (role === "buyer") return "/user/dashboard";
+  if (role === "client") return "/client/dashboard";
+  return "/login";
+}
 
 function companyLogo(name = "") {
   return name
@@ -55,14 +65,15 @@ function PageLoader({ message = "Loading..." }) {
   );
 }
 
-function ProtectedRoute({ children, allowedRole }) {
+function ProtectedRoute({ children, allowedRole, allowedRoles }) {
   const { user, loading } = useAuth();
   if (loading) return <PageLoader message="Checking session..." />;
   if (!user) return <Navigate to="/login" replace />;
-  if (allowedRole && user.role !== allowedRole)
+  const permittedRoles = allowedRoles || (allowedRole ? [allowedRole] : null);
+  if (permittedRoles && !permittedRoles.includes(user.role))
     return (
       <Navigate
-        to={user.role === "broker" ? "/broker/dashboard" : "/client/dashboard"}
+        to={getHomeRoute(user.role)}
         replace
       />
     );
@@ -155,9 +166,97 @@ function ClientWorkspaceWrapper() {
   if (authLoading) return <PageLoader message="Checking session..." />;
   if (!user) return <Navigate to="/login" replace />;
   if (user.role !== "broker")
-    return <Navigate to="/client/dashboard" replace />;
+    return <Navigate to={getHomeRoute(user.role)} replace />;
   if (loading) return <PageLoader message="Loading company workspace..." />;
   if (!company) return <Navigate to="/broker/companies" replace />;
+
+  return (
+    <ClientWorkspaceLayout company={company}>
+      <Outlet />
+    </ClientWorkspaceLayout>
+  );
+}
+
+// Wrapper for user workspace — handles auth + company resolution
+function UserWorkspaceWrapper() {
+  const { user, loading: authLoading } = useAuth();
+  const { showToast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { clientId } = useParams();
+  const [company, setCompany] = useState(location.state?.company ?? null);
+  const [loading, setLoading] = useState(!location.state?.company);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!user || user.role !== "buyer" || !clientId) return;
+
+    let cancelled = false;
+
+    // Check if the company is in the user's assigned companies
+    if (user.assigned_companies) {
+      const assignedCompany = user.assigned_companies.find(
+        (c) => String(c.id) === String(clientId)
+      );
+      if (assignedCompany) {
+        setCompany({
+          ...assignedCompany,
+          logo: assignedCompany.logo || companyLogo(assignedCompany.name),
+        });
+        setLoading(false);
+        return;
+      }
+    }
+
+    // Fallback: try to fetch company if not in assigned list
+    getCompanyRequest(clientId)
+      .then((data) => {
+        if (!cancelled) {
+          // Verify it's assigned to this user
+          const isAssigned = user.assigned_companies?.some(
+            (c) => String(c.id) === String(data.id)
+          );
+          if (!isAssigned) {
+            setError("You don't have access to this company.");
+            setCompany(null);
+          } else {
+            setCompany({
+              ...data,
+              logo: data.logo || companyLogo(data.name),
+            });
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError("Unable to load company details.");
+          setCompany(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, clientId, navigate, showToast]);
+
+  useEffect(() => {
+    if (!error) return;
+    showToast({
+      type: "error",
+      title: "Access Notice",
+      message: error,
+    });
+  }, [error, showToast]);
+
+  if (authLoading) return <PageLoader message="Checking session..." />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== "buyer")
+    return <Navigate to={getHomeRoute(user.role)} replace />;
+  if (loading) return <PageLoader message="Loading company details..." />;
+  if (!company) return <Navigate to="/user/dashboard" replace />;
 
   return (
     <ClientWorkspaceLayout company={company}>
@@ -178,9 +277,7 @@ function AppRoutes() {
           ) : user ? (
             <Navigate
               to={
-                user.role === "broker"
-                  ? "/broker/dashboard"
-                  : "/client/dashboard"
+                getHomeRoute(user.role)
               }
               replace
             />
@@ -272,12 +369,117 @@ function AppRoutes() {
         />
       </Route>
 
+      {/* User portal pages */}
+      <Route
+        path="/user/dashboard"
+        element={
+          <ProtectedRoute allowedRole="buyer">
+            <UserDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/user/requests"
+        element={
+          <ProtectedRoute allowedRole="buyer">
+            <ClientRequests />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/user/documents"
+        element={
+          <ProtectedRoute allowedRole="buyer">
+            <UserDocuments />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/user/datahub-dashboard"
+        element={
+          <ProtectedRoute allowedRole="buyer">
+            <ClientDatahubDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/user/upload"
+        element={
+          <ProtectedRoute allowedRole="buyer">
+            <ClientUpload />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/user/reminders"
+        element={
+          <ProtectedRoute allowedRole="buyer">
+            <ClientReminders />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Legacy buyer portal aliases */}
+      <Route path="/buyer/dashboard" element={<Navigate to="/user/dashboard" replace />} />
+      <Route path="/buyer/datahub-dashboard" element={<Navigate to="/user/datahub-dashboard" replace />} />
+      <Route path="/buyer/requests" element={<Navigate to="/user/requests" replace />} />
+      <Route path="/buyer/upload" element={<Navigate to="/user/upload" replace />} />
+      <Route path="/buyer/reminders" element={<Navigate to="/user/reminders" replace />} />
+
+      {/* User workspace — scoped to assigned clients */}
+      <Route
+        path="/user/client/:clientId"
+        element={<UserWorkspaceWrapper />}
+      >
+        <Route index element={<Navigate to="dashboard" replace />} />
+        <Route path="dashboard" element={<WorkspaceDashboard />} />
+        <Route path="datahub-dashboard" element={<WorkspaceDashboardDatahub />} />
+        <Route path="invoices" element={<WorkspaceInvoices />} />
+        <Route path="reports" element={<WorkspaceReports />} />
+        <Route path="reconciliation" element={<WorkspaceReconciliation />} />
+        <Route path="connections" element={<WorkspaceConnections />} />
+        <Route path="dataroom" element={<Navigate to="requests" replace />} />
+        <Route path="dataroom/requests" element={<WorkspaceRequests />} />
+        <Route path="dataroom/documents" element={<WorkspaceDocuments />} />
+        <Route path="dataroom/reminders" element={<WorkspaceReminders />} />
+        <Route path="dataroom/activity" element={<WorkspaceActivity />} />
+        <Route path="dataroom/users" element={<WorkspaceUsers />} />
+        <Route
+          path="requests"
+          element={<Navigate to="../dataroom/requests" replace />}
+        />
+        <Route
+          path="documents"
+          element={<Navigate to="../dataroom/documents" replace />}
+        />
+        <Route
+          path="reminders"
+          element={<Navigate to="../dataroom/reminders" replace />}
+        />
+        <Route
+          path="activity"
+          element={<Navigate to="../dataroom/activity" replace />}
+        />
+        <Route
+          path="users"
+          element={<Navigate to="../dataroom/users" replace />}
+        />
+      </Route>
+
       {/* Client portal pages */}
       <Route
         path="/client/dashboard"
         element={
           <ProtectedRoute allowedRole="client">
             <ClientDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/client/datahub-dashboard"
+        element={
+          <ProtectedRoute allowedRole="client">
+            <ClientDatahubDashboard />
           </ProtectedRoute>
         }
       />

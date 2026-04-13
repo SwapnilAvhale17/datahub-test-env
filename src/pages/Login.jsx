@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Eye, EyeOff, LogIn, ShieldCheck } from 'lucide-react';
-
-import datahublogo from '../assets/datahublogo.png';
-
+import datahubLogo from '../assets/datahub-logo.png';
 
 const demoCredentials = [
   { role: 'Broker', email: 'broker@leo.com', password: 'broker123', color: '#8BC53D', bg: '#C9E4A4' },
-  { role: 'Client', email: 'client@infosys.com', password: 'client123', color: '#00648F', bg: '#A7DCF7' },
+  { role: 'Client', email: 'mindtech@yopmail.com', password: '123456', color: '#00648F', bg: '#A7DCF7' },
+  { role: 'User', email: 'aahana@yopmail.com', password: '123456', color: '#742982', bg: '#EBD5F0' },
 ];
 
 export default function Login() {
@@ -44,8 +43,11 @@ export default function Login() {
       <div className="relative mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-6xl items-center justify-center gap-10 py-10">
         <div className="relative w-full max-w-md animate-fadeIn">
           <div className="mb-6 text-center">
-            <img src={datahublogo} alt="DataHub" className="h-16 w-auto object-contain" />
-
+            <img
+              src={datahubLogo}
+              alt="DataHub"
+              className="mx-auto mb-4 h-auto w-full max-w-[320px]"
+            />
             <p className="mt-1 text-sm text-secondary">Secure Document Management Platform</p>
           </div>
 
@@ -55,7 +57,7 @@ export default function Login() {
               <p className="mt-1 text-sm text-secondary">Sign in to your account to continue</p>
             </div>
 
-            <div className="mb-6 grid grid-cols-2 gap-2">
+            <div className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-3">
               {demoCredentials.map((cred) => (
                 <button
                   key={cred.role}

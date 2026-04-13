@@ -3,10 +3,11 @@ import {
   Folder, FolderOpen, File, FileText, Search, Download, Eye, Upload,
   ChevronRight, ChevronDown, Trash2, Home, Archive, X, ArrowLeft, Check,
   MoreVertical, LayoutGrid, List, AlertCircle, Pencil, FolderPlus,
-  ArrowUpDown, ArrowUp, ArrowDown, CheckCircle, Clock, Share2, Users, Loader2,
+  ArrowUpDown, ArrowUp, ArrowDown, CheckCircle, Clock, Share2, Users, Loader2, RefreshCw,
 } from 'lucide-react';
 import { useFileExplorerStore, findById, getPathTo } from '../../store/fileExplorerStore';
 import { fetchProtectedFileBlob, listCompanyRequests, listUsersRequest } from '../../lib/api';
+import { useToast } from '../../context/ToastContext';
 
 // ── File Type Helpers ────────────────────────────────────────────────────────
 function getMimeIcon(ext) {
@@ -316,13 +317,23 @@ function Breadcrumbs({ tree, currentPath }) {
 }
 
 // ── TopBar ────────────────────────────────────────────────────────────────────
-function TopBar({ tree, currentPath, onUpload, role, currentFolderPermissions }) {
+function TopBar({ tree, currentPath, onUpload, role, currentFolderPermissions, onRefresh }) {
   const {
     view, setView, sortBy, sortDir, setSortBy, searchQuery, setSearchQuery,
     startNewFolder, goBack, selectedItems, deleteItems,
   } = useFileExplorerStore();
   const currentFolderId = currentPath[currentPath.length - 1];
   const canWrite = role === 'broker' || currentFolderPermissions.write;
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await onRefresh?.();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   return (
     <div className="bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3 flex-wrap flex-shrink-0">
@@ -338,6 +349,16 @@ function TopBar({ tree, currentPath, onUpload, role, currentFolderPermissions })
         )}
         <Breadcrumbs tree={tree} currentPath={currentPath} />
       </div>
+
+      {/* Refresh Button */}
+      <button
+        onClick={handleRefresh}
+        disabled={isRefreshing}
+        className="p-1.5 rounded-lg hover:bg-gray-100 text-[#6D6E71] transition-colors flex-shrink-0 disabled:opacity-50"
+        title="Refresh files"
+      >
+        <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+      </button>
 
       {/* Search */}
       <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 w-56 focus-within:ring-2 focus-within:ring-[#8BC53D]/30 focus-within:border-[#8BC53D] transition-all">
@@ -589,6 +610,7 @@ function FileCard({ item, role, permissions, sharedMeta, onShareAccess, onMoveFo
       {item.type === 'folder' && canManage && (
         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
           <FolderActionMenu
+            role={role}
             onShareAccess={() => onShareAccess(item)}
             onRename={() => startRenaming(item.id)}
             onMove={() => onMoveFolder(item)}
@@ -799,6 +821,7 @@ function FileRow({ item, role, permissions, sharedMeta, onShareAccess, onMoveFol
           {item.type === 'folder' && canManage && (
             <FolderActionMenu
               className="opacity-100"
+              role={role}
               onShareAccess={() => onShareAccess(item)}
               onRename={() => startRenaming(item.id)}
               onMove={() => onMoveFolder(item)}
@@ -914,9 +937,10 @@ function FileTable({
   );
 }
 
-function FolderActionMenu({ onShareAccess, onRename, onMove, onDelete, className }) {
+function FolderActionMenu({ onShareAccess, onRename, onMove, onDelete, className, role }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
+  const canShareAccess = role === 'broker';
 
   useEffect(() => {
     if (!open) return undefined;
@@ -938,13 +962,15 @@ function FolderActionMenu({ onShareAccess, onRename, onMove, onDelete, className
       </button>
       {open && (
         <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-20 animate-fadeIn">
-          <button
-            onClick={() => { onShareAccess(); setOpen(false); }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50"
-          >
-            <Share2 size={14} className="text-[#05164D]" />
-            Share Access
-          </button>
+          {canShareAccess && (
+            <button
+              onClick={() => { onShareAccess(); setOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50"
+            >
+              <Share2 size={14} className="text-[#05164D]" />
+              Share Access
+            </button>
+          )}
           <button
             onClick={() => { onRename(); setOpen(false); }}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50"
@@ -1597,6 +1623,7 @@ function DuplicateWarning({ names, onClose }) {
 
 // ── Main FileExplorer ─────────────────────────────────────────────────────────
 export default function FileExplorer({ role = 'broker', title, companyId, currentUserId }) {
+  const { showToast } = useToast();
   const {
     tree, currentPath, view, sortBy, sortDir, searchQuery, selectedItems,
     clearSelection, hideContextMenu, uploadFiles, dragOver, draggingItems,
@@ -1623,6 +1650,15 @@ export default function FileExplorer({ role = 'broker', title, companyId, curren
       .catch((err) => setTreeError(err.message || 'Unable to load folders.'))
       .finally(() => setLoadingTree(false));
   }, [companyId, hydrateFromApi, setCompanyId]);
+
+  useEffect(() => {
+    if (!treeError) return;
+    showToast({
+      type: 'error',
+      title: 'Documents Error',
+      message: treeError,
+    });
+  }, [treeError, showToast]);
 
   useEffect(() => {
     if (!companyId) {
@@ -1653,7 +1689,8 @@ export default function FileExplorer({ role = 'broker', title, companyId, curren
         const people = users
           .filter((user) => {
             const userCompanyId = user.company_id || user.companyId;
-            return userCompanyId === companyId && ['buyer', 'client'].includes((user.role || '').toLowerCase());
+            const userCompanyIds = user.company_ids || user.companyIds || [userCompanyId].filter(Boolean);
+            return userCompanyIds.some((id) => String(id) === String(companyId)) && ['buyer', 'client'].includes((user.role || '').toLowerCase());
           })
           .map((user) => ({
             id: user.id,
@@ -1681,6 +1718,10 @@ export default function FileExplorer({ role = 'broker', title, companyId, curren
 
   const getFolderPermissions = useCallback((folderId) => {
     if (role === 'broker') return { read: true, write: true, download: true };
+    // For clients/CPOCs, give them full access to their company's files
+    if (role === 'client' || role === 'buyer') {
+      return { read: true, write: true, download: true };
+    }
     let entries = folderAccess[folderId] || [];
     if (entries.length === 0) {
       const path = getPathTo(tree, folderId);
@@ -1851,14 +1892,10 @@ export default function FileExplorer({ role = 'broker', title, companyId, curren
           onUpload={openUpload}
           role={role}
           currentFolderPermissions={currentFolderPermissions}
+          onRefresh={() => hydrateFromApi(companyId)}
         />
 
         {/* Content Area */}
-        {treeError && (
-          <div className="px-4 py-3 mb-4 bg-red-50 rounded-2xl border border-red-100 text-sm text-[#C62026]">
-            {treeError}
-          </div>
-        )}
         <div
           className="flex-1 overflow-y-auto overflow-x-hidden p-4 relative"
           onClick={() => { clearSelection(); hideContextMenu(); }}

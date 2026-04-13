@@ -1,6 +1,34 @@
 const jwt = require("jsonwebtoken");
 const db = require("../db");
 
+function rowsOf(result) {
+  if (!result) return [];
+  return Array.isArray(result) ? result : result.rows || [];
+}
+
+async function attachAssignedCompanies(user) {
+  if (!user?.id) return user;
+  const companies = rowsOf(await db.query(
+    `SELECT c.id, c.name, c.industry, c.status
+     FROM user_companies uc
+     JOIN companies c ON c.id = uc.company_id
+     WHERE uc.user_id = ?
+     ORDER BY c.name ASC`,
+    [user.id]
+  ));
+
+  const hasPrimary = user.company_id && companies.some((company) => String(company.id) === String(user.company_id));
+  const assignedCompanies = hasPrimary || !user.company_id
+    ? companies
+    : [{ id: user.company_id, name: user.company_name }, ...companies];
+
+  return {
+    ...user,
+    company_ids: assignedCompanies.map((company) => company.id).filter(Boolean),
+    assigned_companies: assignedCompanies,
+  };
+}
+
 async function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
@@ -23,7 +51,7 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: "Invalid token" });
     }
 
-    req.user = rows[0];
+    req.user = await attachAssignedCompanies(rows[0]);
     return next();
   } catch (err) {
     return res.status(401).json({ error: "Invalid token" });
